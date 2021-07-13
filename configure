@@ -679,7 +679,7 @@ OBJCSYNC
 NX_CONST_STRING_CLASS
 NX_CONST_STRING_OBJCFLAGS
 GS_HAVE_OBJC_ROOT_CLASS_ATTR
-GS_USE_WINDOWS_LOCKS
+GS_USE_WIN32_LOCKS
 GS_ALIGNOF_COND_T
 GS_ALIGNOF_COND_MUTEX_T
 GS_ALIGNOF_MUTEX_T
@@ -7739,7 +7739,7 @@ fi
 
 
 # Windows: check if we have SRW locks
-GS_USE_WINDOWS_LOCKS=0
+GS_USE_WIN32_LOCKS=0
 if test $ismingw = yes -o $ismsvc = yes; then
   for ac_func in AcquireSRWLockExclusive
 do :
@@ -7748,14 +7748,14 @@ if test "x$ac_cv_func_AcquireSRWLockExclusive" = xyes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_ACQUIRESRWLOCKEXCLUSIVE 1
 _ACEOF
- GS_USE_WINDOWS_LOCKS=1
+ GS_USE_WIN32_LOCKS=1
 fi
 done
 
 fi
 
 
-if test $GS_USE_WINDOWS_LOCKS = 1; then
+if test $GS_USE_WIN32_LOCKS = 1; then
   # The cast to long int works around a bug in the HP C Compiler
 # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
 # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
@@ -7766,7 +7766,7 @@ if ${ac_cv_sizeof_gs_mutex_t+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   if ac_fn_c_compute_int "$LINENO" "(long int) (sizeof (gs_mutex_t))" "ac_cv_sizeof_gs_mutex_t"        "$ac_includes_default
-    #define GS_USE_WINDOWS_LOCKS 1
+    #define GS_USE_WIN32_LOCKS 1
     #include \"Source/GSPThread.h\"
 "; then :
 
@@ -7806,7 +7806,7 @@ if ${ac_cv_alignof_gs_mutex_t+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   if ac_fn_c_compute_int "$LINENO" "(long int) offsetof (ac__type_alignof_, y)" "ac_cv_alignof_gs_mutex_t"        "$ac_includes_default
-    #define GS_USE_WINDOWS_LOCKS 1
+    #define GS_USE_WIN32_LOCKS 1
     #include \"Source/GSPThread.h\"
 
 #ifndef offsetof

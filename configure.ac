@@ -1803,15 +1803,15 @@ AC_CHECK_FUNCS(pthread_getthreadid_np pthread_main_np)
 AC_CHECK_LIB(rt, sched_yield)
 
 # Windows: check if we have SRW locks
-GS_USE_WINDOWS_LOCKS=0
+GS_USE_WIN32_LOCKS=0
 if test $ismingw = yes -o $ismsvc = yes; then
-  AC_CHECK_FUNCS(AcquireSRWLockExclusive, GS_USE_WINDOWS_LOCKS=1)
+  AC_CHECK_FUNCS(AcquireSRWLockExclusive, GS_USE_WIN32_LOCKS=1)
 fi
-AC_SUBST(GS_USE_WINDOWS_LOCKS)
+AC_SUBST(GS_USE_WIN32_LOCKS)
 
-if test $GS_USE_WINDOWS_LOCKS = 1; then
+if test $GS_USE_WIN32_LOCKS = 1; then
   AC_CHECK_SIZEOF(gs_mutex_t,,[AC_INCLUDES_DEFAULT
-    #define GS_USE_WINDOWS_LOCKS 1
+    #define GS_USE_WIN32_LOCKS 1
     #include "Source/GSPThread.h"])
   GS_SIZEOF_MUTEX_T=$ac_cv_sizeof_gs_mutex_t
   if test $ac_cv_sizeof_gs_mutex_t = 0 ; then
@@ -1820,7 +1820,7 @@ if test $GS_USE_WINDOWS_LOCKS = 1; then
   AC_SUBST(GS_SIZEOF_MUTEX_T)
   
   AC_CHECK_ALIGNOF(gs_mutex_t,[AC_INCLUDES_DEFAULT
-    #define GS_USE_WINDOWS_LOCKS 1
+    #define GS_USE_WIN32_LOCKS 1
     #include "Source/GSPThread.h"])
   GS_ALIGNOF_MUTEX_T=$ac_cv_alignof_gs_mutex_t
   if test $ac_cv_alignof_gs_mutex_t = 0 ; then

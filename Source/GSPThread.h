@@ -23,7 +23,7 @@
 #ifndef _GSPThread_h_
 #define _GSPThread_h_
 
-#if GS_USE_WINDOWS_LOCKS
+#if GS_USE_WIN32_LOCKS
 
 #include <windows.h>
 #include <stdatomic.h>
@@ -67,7 +67,7 @@ int gs_mutex_unlock(gs_mutex_t *l);
 int gs_cond_wait(gs_cond_t *cond, gs_mutex_t *mutex);
 int gs_cond_timedwait(gs_cond_t *cond, gs_mutex_t *mutex, DWORD millisecs);
 
-#else /* GS_USE_WINDOWS_LOCKS */
+#else /* GS_USE_WIN32_LOCKS */
 
 #include <pthread.h>
 
@@ -112,7 +112,7 @@ static inline void GSPThreadInitRecursiveMutex(pthread_mutex_t *x)
 
 #define GS_YIELD() sched_yield()
 
-#endif /* GS_USE_WINDOWS_LOCKS */
+#endif /* GS_USE_WIN32_LOCKS */
 
 #ifdef __OBJC__
 

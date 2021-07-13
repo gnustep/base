@@ -34,6 +34,10 @@
 #ifndef _GSAtomic_h_
 #define _GSAtomic_h_
 
+#ifndef __has_extension
+#define __has_extension(x) 0
+#endif
+
 #if __has_extension(c_atomic) || __has_extension(cxx_atomic)
 
 /*

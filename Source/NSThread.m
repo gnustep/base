@@ -516,7 +516,7 @@ _boxedPthreadIsEqual(NSMapTable *t,
   _getPthreadFromNSValue(boxed, &thread);
   _getPthreadFromNSValue(boxedOther, &otherThread);
 
-#if GS_USE_WIN32_THREADS
+#if GS_USE_WIN32_THREADS_AND_LOCKS
   return thread == otherThread;
 #else
   return pthread_equal(thread, otherThread);
@@ -971,7 +971,7 @@ unregisterActiveThread(NSThread *thread)
 	}
       else
 	{
-#if GS_USE_WIN32_THREADS
+#if GS_USE_WIN32_THREADS_AND_LOCKS
           ExitThread(0);
 #else
           pthread_exit(NULL);
@@ -1325,7 +1325,7 @@ unregisterActiveThread(NSThread *thread)
  * Trampoline function called to launch the thread
  */
 static
-#if GS_USE_WIN32_THREADS
+#if GS_USE_WIN32_THREADS_AND_LOCKS
 unsigned int
 #else
 void *
@@ -1353,7 +1353,7 @@ nsthreadLauncher(void *thread)
 
   [NSThread exit];
   // Not reached
-#if GS_USE_WIN32_THREADS
+#if GS_USE_WIN32_THREADS_AND_LOCKS
   return 0;
 #else
   return NULL;
@@ -1362,7 +1362,7 @@ nsthreadLauncher(void *thread)
 
 - (void) start
 {
-#if !GS_USE_WIN32_THREADS
+#if !GS_USE_WIN32_THREADS_AND_LOCKS
   pthread_attr_t	attr;
 #endif
 
@@ -1402,7 +1402,7 @@ nsthreadLauncher(void *thread)
 
   errno = 0;
 
-#if GS_USE_WIN32_THREADS
+#if GS_USE_WIN32_THREADS_AND_LOCKS
   if (_beginthreadex(NULL, _stackSize, nsthreadLauncher, self, 0, NULL) == 0)
     {
       DESTROY(self);

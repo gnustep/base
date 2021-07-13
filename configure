@@ -685,8 +685,7 @@ GS_ALIGNOF_MUTEX_T
 GS_SIZEOF_COND_T
 GS_SIZEOF_COND_MUTEX_T
 GS_SIZEOF_MUTEX_T
-GS_USE_WIN32_THREADS
-GS_USE_WIN32_LOCKS
+HAVE_WIN32_THREADS_AND_LOCKS
 DYNAMIC_LINKER
 BUGGY_PTR_LIMITS
 GS_UINTPTR_MAX
@@ -7255,51 +7254,38 @@ fi
 done
 
 
-ismingw=no
-ismsvc=no
-checkinlibc=no
+#--------------------------------------------------------------------
+# Windows: check if we have native threading APIs and SRW locks
+#--------------------------------------------------------------------
+HAVE_WIN32_THREADS_AND_LOCKS=0
 case "$target_os" in
-  mingw*)	ismingw=yes;;
-  windows) ismsvc=yes;;
-  nto*)		checkinlibc=yes;;
-  qnx*)		checkinlibc=yes;;
-  *android*)   checkinlibc=yes;;
+  mingw*|windows)
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for native Windows threads and locks" >&5
+$as_echo_n "checking for native Windows threads and locks... " >&6; }
+    cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+        #define GS_USE_WIN32_THREADS_AND_LOCKS 1
+        #include "$srcdir/Source/GSPThread.h"
+
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+      HAVE_WIN32_THREADS_AND_LOCKS=1
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+    ;;
 esac
-
-# Windows: check if we have SRW locks and threading APIs
-GS_USE_WIN32_LOCKS=0
-GS_USE_WIN32_THREADS=0
-if test $ismingw = yes -o $ismsvc = yes; then
-  for ac_func in AcquireSRWLockExclusive
-do :
-  ac_fn_c_check_func "$LINENO" "AcquireSRWLockExclusive" "ac_cv_func_AcquireSRWLockExclusive"
-if test "x$ac_cv_func_AcquireSRWLockExclusive" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_ACQUIRESRWLOCKEXCLUSIVE 1
-_ACEOF
- GS_USE_WIN32_LOCKS=1
-fi
-done
-
-  for ac_func in FlsAlloc
-do :
-  ac_fn_c_check_func "$LINENO" "FlsAlloc" "ac_cv_func_FlsAlloc"
-if test "x$ac_cv_func_FlsAlloc" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_FLSALLOC 1
-_ACEOF
- GS_USE_WIN32_THREADS=1
-fi
-done
-
-fi
-
 
 
 #--------------------------------------------------------------------
 # Check for pthread.h
 #--------------------------------------------------------------------
-if test $GS_USE_WIN32_LOCKS = 0 -o $GS_USE_WIN32_THREADS = 0; then
+if test $HAVE_WIN32_THREADS_AND_LOCKS = 0; then
   for ac_header in pthread.h
 do :
   ac_fn_c_check_header_mongrel "$LINENO" "pthread.h" "ac_cv_header_pthread_h" "$ac_includes_default"
@@ -7566,8 +7552,9 @@ fi
   if test $pthread_ok = yes ; then
     LIBS="$LIBS -lpthread"
   else
-    if test $ismingw = yes ; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lpthreadGC2" >&5
+    case "$target_os" in
+      mingw*)
+        { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lpthreadGC2" >&5
 $as_echo_n "checking for pthread_join in -lpthreadGC2... " >&6; }
 if ${ac_cv_lib_pthreadGC2_pthread_join+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -7609,12 +7596,12 @@ else
   pthread_ok=no
 fi
 
-      if test $pthread_ok = yes ; then
-        LIBS="$LIBS -lpthreadGC2"
-      fi
-    fi
-    if test $ismsvc = yes ; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lpthreadVC2" >&5
+        if test $pthread_ok = yes ; then
+          LIBS="$LIBS -lpthreadGC2"
+        fi
+        ;;
+      windows)
+        { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lpthreadVC2" >&5
 $as_echo_n "checking for pthread_join in -lpthreadVC2... " >&6; }
 if ${ac_cv_lib_pthreadVC2_pthread_join+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -7656,13 +7643,13 @@ else
   pthread_ok=no
 fi
 
-      if test $pthread_ok = yes ; then
-        LIBS="$LIBS -lpthreadVC2"
-      fi
-    fi
-    # Android and QNX have pthread in libc instead of libpthread
-    if test $checkinlibc = yes ; then
-      { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lc" >&5
+        if test $pthread_ok = yes ; then
+          LIBS="$LIBS -lpthreadVC2"
+        fi
+        ;;
+      nto*|qnx*|*android*)
+        # Android and QNX have pthread in libc instead of libpthread
+        { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lc" >&5
 $as_echo_n "checking for pthread_join in -lc... " >&6; }
 if ${ac_cv_lib_c_pthread_join+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -7704,10 +7691,11 @@ else
   pthread_ok=no
 fi
 
-      if test $pthread_ok = yes ; then
-         LIBS="$LIBS -lc"
-      fi
-    fi
+        if test $pthread_ok = yes ; then
+           LIBS="$LIBS -lc"
+        fi
+        ;;
+    esac
   fi
   if test $pthread_ok = no ; then
     as_fn_error $? "Unable to find pthread library (needed for thread support)." "$LINENO" 5
@@ -7773,12 +7761,104 @@ _ACEOF
 
 fi
 
+
+  # Check if we can name pthreads
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_setname_np()" >&5
+$as_echo_n "checking for pthread_setname_np()... " >&6; }
+if ${gs_cv_pthread_setname_np+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <pthread.h>
+int
+main ()
+{
+pthread_setname_np("name");
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  gs_cv_pthread_setname_np=darwin
+else
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <pthread.h>
+int
+main ()
+{
+pthread_setname_np(pthread_self(), "name");
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  gs_cv_pthread_setname_np=glibc
+else
+  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <pthread.h>
+int
+main ()
+{
+pthread_setname_np(pthread_self(), "%s", "name");
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  gs_cv_pthread_setname_np=netbsd
+else
+  gs_cv_pthread_setname_np=none
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $gs_cv_pthread_setname_np" >&5
+$as_echo "$gs_cv_pthread_setname_np" >&6; }
+  case $gs_cv_pthread_setname_np in
+    darwin)
+
+$as_echo "#define PTHREAD_SETNAME(a) pthread_setname_np(a)" >>confdefs.h
+
+      ;;
+    glibc)
+
+$as_echo "#define PTHREAD_SETNAME(a) pthread_setname_np(pthread_self(),a)" >>confdefs.h
+
+      ;;
+    netbsd)
+
+$as_echo "#define PTHREAD_SETNAME(a) pthread_setname_np(pthread_self(),\"%s\",a)" >>confdefs.h
+
+      ;;
+  esac
+
+  # Check if we have spinlock support
+  for ac_func in pthread_spin_lock
+do :
+  ac_fn_c_check_func "$LINENO" "pthread_spin_lock" "ac_cv_func_pthread_spin_lock"
+if test "x$ac_cv_func_pthread_spin_lock" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_PTHREAD_SPIN_LOCK 1
+_ACEOF
+
+fi
+done
+
 fi
 
 #--------------------------------------------------------------------
 # Check Win32 lock sizes
 #--------------------------------------------------------------------
-if test $GS_USE_WIN32_LOCKS = 1; then
+if test $HAVE_WIN32_THREADS_AND_LOCKS = 1; then
   # The cast to long int works around a bug in the HP C Compiler
 # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
 # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
@@ -7789,8 +7869,7 @@ if ${ac_cv_sizeof_gs_mutex_t+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   if ac_fn_c_compute_int "$LINENO" "(long int) (sizeof (gs_mutex_t))" "ac_cv_sizeof_gs_mutex_t"        "$ac_includes_default
-    #define GS_USE_WIN32_LOCKS 1
-    #define GS_USE_WIN32_THREADS 1
+    #define GS_USE_WIN32_THREADS_AND_LOCKS 1
     #include \"Source/GSPThread.h\"
 "; then :
 
@@ -7830,8 +7909,7 @@ if ${ac_cv_alignof_gs_mutex_t+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   if ac_fn_c_compute_int "$LINENO" "(long int) offsetof (ac__type_alignof_, y)" "ac_cv_alignof_gs_mutex_t"        "$ac_includes_default
-    #define GS_USE_WIN32_LOCKS 1
-    #define GS_USE_WIN32_THREADS 1
+    #define GS_USE_WIN32_THREADS_AND_LOCKS 1
     #include \"Source/GSPThread.h\"
 
 #ifndef offsetof
@@ -8084,104 +8162,6 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 CFLAGS=$saved_CFLAGS
-
-
-#--------------------------------------------------------------------
-# Check if we can name pthreads
-#--------------------------------------------------------------------
-
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_setname_np()" >&5
-$as_echo_n "checking for pthread_setname_np()... " >&6; }
-if ${gs_cv_pthread_setname_np+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <pthread.h>
-int
-main ()
-{
-pthread_setname_np("name");
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  gs_cv_pthread_setname_np=darwin
-else
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <pthread.h>
-int
-main ()
-{
-pthread_setname_np(pthread_self(), "name");
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  gs_cv_pthread_setname_np=glibc
-else
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <pthread.h>
-int
-main ()
-{
-pthread_setname_np(pthread_self(), "%s", "name");
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  gs_cv_pthread_setname_np=netbsd
-else
-  gs_cv_pthread_setname_np=none
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $gs_cv_pthread_setname_np" >&5
-$as_echo "$gs_cv_pthread_setname_np" >&6; }
-case $gs_cv_pthread_setname_np in
-  darwin)
-
-$as_echo "#define PTHREAD_SETNAME(a) pthread_setname_np(a)" >>confdefs.h
-
-    ;;
-  glibc)
-
-$as_echo "#define PTHREAD_SETNAME(a) pthread_setname_np(pthread_self(),a)" >>confdefs.h
-
-    ;;
-  netbsd)
-
-$as_echo "#define PTHREAD_SETNAME(a) pthread_setname_np(pthread_self(),\"%s\",a)" >>confdefs.h
-
-    ;;
-esac
-
-#--------------------------------------------------------------------
-# Check if we have spinlock support
-#--------------------------------------------------------------------
-for ac_func in pthread_spin_lock
-do :
-  ac_fn_c_check_func "$LINENO" "pthread_spin_lock" "ac_cv_func_pthread_spin_lock"
-if test "x$ac_cv_func_pthread_spin_lock" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_PTHREAD_SPIN_LOCK 1
-_ACEOF
-
-fi
-done
-
 
 #--------------------------------------------------------------------
 # Check whether we can get the system thread ID
@@ -9465,8 +9445,9 @@ $as_echo "#define HAVE_BFD_SECTION_VMA 1" >>confdefs.h
 fi
 
 
-if test $ismingw = yes ; then
-  for ac_header in dbghelp.h
+case "$target_os" in
+  mingw*)
+    for ac_header in dbghelp.h
 do :
   ac_fn_c_check_header_mongrel "$LINENO" "dbghelp.h" "ac_cv_header_dbghelp_h" "$ac_includes_default"
 if test "x$ac_cv_header_dbghelp_h" = xyes; then :
@@ -9478,8 +9459,9 @@ fi
 
 done
 
-else
-  for ac_header in execinfo.h
+    ;;
+  *)
+    for ac_header in execinfo.h
 do :
   ac_fn_c_check_header_mongrel "$LINENO" "execinfo.h" "ac_cv_header_execinfo_h" "$ac_includes_default"
 if test "x$ac_cv_header_execinfo_h" = xyes; then :
@@ -9491,7 +9473,7 @@ fi
 
 done
 
-  for ac_func in backtrace
+    for ac_func in backtrace
 do :
   ac_fn_c_check_func "$LINENO" "backtrace" "ac_cv_func_backtrace"
 if test "x$ac_cv_func_backtrace" = xyes; then :
@@ -9502,7 +9484,8 @@ _ACEOF
 fi
 done
 
-fi
+    ;;
+esac
 
 for ac_func in __builtin_extract_return_address
 do :

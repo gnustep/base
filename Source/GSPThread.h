@@ -23,10 +23,11 @@
 #ifndef _GSPThread_h_
 #define _GSPThread_h_
 
-#if GS_USE_WIN32_LOCKS
+#if GS_USE_WIN32_THREADS_AND_LOCKS
 
 #include <windows.h>
-#include <stdatomic.h>
+#include <process.h>
+#include "GSAtomic.h"
 
 typedef enum {
   gs_mutex_attr_normal = 0,
@@ -36,14 +37,17 @@ typedef enum {
 
 typedef struct {
   SRWLOCK lock;
-  atomic_ulong owner;
-  unsigned long depth;
+  _Atomic(DWORD) owner;
+  DWORD depth;
   gs_mutex_attr_t attr;
 } gs_mutex_t;
 
 typedef SRWLOCK gs_cond_mutex_t;
 typedef CONDITION_VARIABLE gs_cond_t;
 
+/*
+ * Locking primitives.
+ */
 #define GS_MUTEX_INIT_STATIC {.lock = SRWLOCK_INIT, .attr = gs_mutex_attr_normal}
 #define GS_MUTEX_INIT(x) gs_mutex_init(&(x), gs_mutex_attr_normal)
 #define GS_MUTEX_INIT_RECURSIVE(x) gs_mutex_init(&(x), gs_mutex_attr_recursive)
@@ -57,8 +61,6 @@ typedef CONDITION_VARIABLE gs_cond_t;
 #define GS_COND_SIGNAL(cond) WakeConditionVariable(&(cond))
 #define GS_COND_BROADCAST(cond) WakeAllConditionVariable(&(cond))
 
-#define GS_YIELD() Sleep(0)
-
 /* Pthread-like locking primitives defined in NSLock.m */
 void gs_mutex_init(gs_mutex_t *l, gs_mutex_attr_t attr);
 int gs_mutex_lock(gs_mutex_t *l);
@@ -67,7 +69,26 @@ int gs_mutex_unlock(gs_mutex_t *l);
 int gs_cond_wait(gs_cond_t *cond, gs_mutex_t *mutex);
 int gs_cond_timedwait(gs_cond_t *cond, gs_mutex_t *mutex, DWORD millisecs);
 
-#else /* GS_USE_WIN32_LOCKS */
+/*
+ * Threading primitives.
+ *
+ * Use Fiber Local Storage (FLS), as in contrast to Thread Local Storage (TLS)
+ * they provide a destructor callback and will just manipulate the FLS
+ * associated with the current thread if fibers are not being used.
+ */
+#define GS_THREAD_KEY_INIT(key, dtor) \
+  ((key = FlsAlloc(dtor)) != FLS_OUT_OF_INDEXES)
+#define GS_THREAD_KEY_GET(key)        FlsGetValue(key)
+#define GS_THREAD_KEY_SET(key, val)   FlsSetValue(key, val)
+
+#define GS_THREAD_ID_SELF()           GetCurrentThreadId()
+
+#define GS_YIELD() Sleep(0)
+
+typedef DWORD gs_thread_key_t;
+typedef DWORD gs_thread_id_t;
+
+#else /* GS_USE_WIN32_THREADS_AND_LOCKS */
 
 #include <pthread.h>
 
@@ -75,6 +96,9 @@ typedef pthread_mutex_t gs_mutex_t;
 typedef pthread_mutex_t gs_cond_mutex_t;
 typedef pthread_cond_t gs_cond_t;
 
+/*
+ * Locking primitives
+ */
 #define GS_MUTEX_INIT_STATIC PTHREAD_MUTEX_INITIALIZER
 #define GS_MUTEX_INIT(x) pthread_mutex_init(&(x), NULL)
 
@@ -110,39 +134,21 @@ static inline void GSPThreadInitRecursiveMutex(pthread_mutex_t *x)
 #define GS_COND_SIGNAL(cond) pthread_cond_signal(&(cond))
 #define GS_COND_BROADCAST(cond) pthread_cond_broadcast(&(cond))
 
-#define GS_YIELD() sched_yield()
-
-#endif /* GS_USE_WIN32_LOCKS */
-
-
 /*
  * Threading primitives.
  */
-#if GS_USE_WIN32_THREADS
-
-#include <process.h>
-
-typedef DWORD         gs_thread_key_t;
-typedef DWORD         gs_thread_id_t;
-
-#define GS_THREAD_KEY_INIT(key, dtor) ((key = FlsAlloc(dtor)) != FLS_OUT_OF_INDEXES)
-#define GS_THREAD_KEY_GET(key)        FlsGetValue(key)
-#define GS_THREAD_KEY_SET(key, val)   FlsSetValue(key, val)
-
-#define GS_THREAD_ID_SELF()           GetCurrentThreadId()
-
-#else /* GS_USE_WIN32_THREADS */
-
-typedef pthread_key_t gs_thread_key_t;
-typedef pthread_t     gs_thread_id_t;
-
 #define GS_THREAD_KEY_INIT(key, dtor) (pthread_key_create(&(key), dtor) == 0)
 #define GS_THREAD_KEY_GET(key)        pthread_getspecific(key)
 #define GS_THREAD_KEY_SET(key, val)   pthread_setspecific(key, val)
 
 #define GS_THREAD_ID_SELF()           pthread_self()
 
-#endif /* GS_USE_WIN32_THREADS */
+#define GS_YIELD() sched_yield()
+
+typedef pthread_key_t gs_thread_key_t;
+typedef pthread_t     gs_thread_id_t;
+
+#endif /* GS_USE_WIN32_THREADS_AND_LOCKS */
 
 
 #ifdef __OBJC__ /* Enables including file in autoconf check */

@@ -1702,31 +1702,29 @@ fi
 
 AC_CHECK_FUNCS(getaddrinfo)
 
-ismingw=no
-ismsvc=no
-checkinlibc=no
+#--------------------------------------------------------------------
+# Windows: check if we have native threading APIs and SRW locks
+#--------------------------------------------------------------------
+HAVE_WIN32_THREADS_AND_LOCKS=0
 case "$target_os" in
-  mingw*)	ismingw=yes;;
-  windows) ismsvc=yes;;
-  nto*)		checkinlibc=yes;;
-  qnx*)		checkinlibc=yes;;
-  *android*)   checkinlibc=yes;;
+  mingw*|windows)
+    AC_MSG_CHECKING(for native Windows threads and locks)
+    AC_COMPILE_IFELSE(
+      [AC_LANG_SOURCE([
+        #define GS_USE_WIN32_THREADS_AND_LOCKS 1
+        #include "$srcdir/Source/GSPThread.h"
+      ])],
+      AC_MSG_RESULT([yes])
+      HAVE_WIN32_THREADS_AND_LOCKS=1,
+      AC_MSG_RESULT([no]))
+    ;;
 esac
-
-# Windows: check if we have SRW locks and threading APIs
-GS_USE_WIN32_LOCKS=0
-GS_USE_WIN32_THREADS=0
-if test $ismingw = yes -o $ismsvc = yes; then
-  AC_CHECK_FUNCS(AcquireSRWLockExclusive, GS_USE_WIN32_LOCKS=1)
-  AC_CHECK_FUNCS(FlsAlloc, GS_USE_WIN32_THREADS=1)
-fi
-AC_SUBST(GS_USE_WIN32_LOCKS)
-AC_SUBST(GS_USE_WIN32_THREADS)
+AC_SUBST(HAVE_WIN32_THREADS_AND_LOCKS)
 
 #--------------------------------------------------------------------
 # Check for pthread.h
 #--------------------------------------------------------------------
-if test $GS_USE_WIN32_LOCKS = 0 -o $GS_USE_WIN32_THREADS = 0; then
+if test $HAVE_WIN32_THREADS_AND_LOCKS = 0; then
   AC_CHECK_HEADERS([pthread.h])
   AC_CHECK_HEADERS([pthread_np.h],[],[],[AC_INCLUDES_DEFAULT
     #ifdef HAVE_PTHREAD_H
@@ -1787,25 +1785,27 @@ if test $GS_USE_WIN32_LOCKS = 0 -o $GS_USE_WIN32_THREADS = 0; then
   if test $pthread_ok = yes ; then
     LIBS="$LIBS -lpthread"
   else
-    if test $ismingw = yes ; then
-      AC_CHECK_LIB(pthreadGC2, pthread_join, pthread_ok=yes, pthread_ok=no)
-      if test $pthread_ok = yes ; then
-        LIBS="$LIBS -lpthreadGC2"
-      fi
-    fi
-    if test $ismsvc = yes ; then
-      AC_CHECK_LIB(pthreadVC2, pthread_join, pthread_ok=yes, pthread_ok=no)
-      if test $pthread_ok = yes ; then
-        LIBS="$LIBS -lpthreadVC2"
-      fi
-    fi
-    # Android and QNX have pthread in libc instead of libpthread
-    if test $checkinlibc = yes ; then
-      AC_CHECK_LIB(c, pthread_join, pthread_ok=yes, pthread_ok=no)
-      if test $pthread_ok = yes ; then
-         LIBS="$LIBS -lc"
-      fi
-    fi
+    case "$target_os" in
+      mingw*)
+        AC_CHECK_LIB(pthreadGC2, pthread_join, pthread_ok=yes, pthread_ok=no)
+        if test $pthread_ok = yes ; then
+          LIBS="$LIBS -lpthreadGC2"
+        fi
+        ;;
+      windows)
+        AC_CHECK_LIB(pthreadVC2, pthread_join, pthread_ok=yes, pthread_ok=no)
+        if test $pthread_ok = yes ; then
+          LIBS="$LIBS -lpthreadVC2"
+        fi
+        ;;
+      nto*|qnx*|*android*)
+        # Android and QNX have pthread in libc instead of libpthread
+        AC_CHECK_LIB(c, pthread_join, pthread_ok=yes, pthread_ok=no)
+        if test $pthread_ok = yes ; then
+           LIBS="$LIBS -lc"
+        fi
+        ;;
+    esac
   fi
   if test $pthread_ok = no ; then
     AC_MSG_ERROR([Unable to find pthread library (needed for thread support).])
@@ -1816,15 +1816,47 @@ if test $GS_USE_WIN32_LOCKS = 0 -o $GS_USE_WIN32_THREADS = 0; then
 
   # Typically need librt on Solaris for sched_yield
   AC_CHECK_LIB(rt, sched_yield)
+  
+  # Check if we can name pthreads
+  AC_CACHE_CHECK([for pthread_setname_np()], gs_cv_pthread_setname_np,
+  [AC_LINK_IFELSE(
+    [AC_LANG_PROGRAM([#include <pthread.h>],
+      [pthread_setname_np("name");])],
+    [gs_cv_pthread_setname_np=darwin],
+    [AC_LINK_IFELSE(
+      [AC_LANG_PROGRAM([#include <pthread.h>],
+        [pthread_setname_np(pthread_self(), "name");])],
+      [gs_cv_pthread_setname_np=glibc],
+      [AC_LINK_IFELSE(
+        [AC_LANG_PROGRAM([#include <pthread.h>],
+          [pthread_setname_np(pthread_self(), "%s", "name");])],
+        [gs_cv_pthread_setname_np=netbsd],
+        [gs_cv_pthread_setname_np=none])])])])
+  case $gs_cv_pthread_setname_np in
+    darwin)
+      AC_DEFINE(PTHREAD_SETNAME(a), pthread_setname_np(a),
+        [Description: Define set name function for pthread with one arg])
+      ;;
+    glibc)
+      AC_DEFINE(PTHREAD_SETNAME(a), pthread_setname_np(pthread_self(),a),
+        [Description: Define setname function for pthread with two args])
+      ;;
+    netbsd)
+      AC_DEFINE(PTHREAD_SETNAME(a), pthread_setname_np(pthread_self(),"%s",a),
+        [Description: Define setname function for pthread with three args])
+      ;;
+  esac
+  
+  # Check if we have spinlock support
+  AC_CHECK_FUNCS(pthread_spin_lock)
 fi
 
 #--------------------------------------------------------------------
 # Check Win32 lock sizes
 #--------------------------------------------------------------------
-if test $GS_USE_WIN32_LOCKS = 1; then
+if test $HAVE_WIN32_THREADS_AND_LOCKS = 1; then
   AC_CHECK_SIZEOF(gs_mutex_t,,[AC_INCLUDES_DEFAULT
-    #define GS_USE_WIN32_LOCKS 1
-    #define GS_USE_WIN32_THREADS 1
+    #define GS_USE_WIN32_THREADS_AND_LOCKS 1
     #include "Source/GSPThread.h"])
   GS_SIZEOF_MUTEX_T=$ac_cv_sizeof_gs_mutex_t
   if test $ac_cv_sizeof_gs_mutex_t = 0 ; then
@@ -1833,8 +1865,7 @@ if test $GS_USE_WIN32_LOCKS = 1; then
   AC_SUBST(GS_SIZEOF_MUTEX_T)
   
   AC_CHECK_ALIGNOF(gs_mutex_t,[AC_INCLUDES_DEFAULT
-    #define GS_USE_WIN32_LOCKS 1
-    #define GS_USE_WIN32_THREADS 1
+    #define GS_USE_WIN32_THREADS_AND_LOCKS 1
     #include "Source/GSPThread.h"])
   GS_ALIGNOF_MUTEX_T=$ac_cv_alignof_gs_mutex_t
   if test $ac_cv_alignof_gs_mutex_t = 0 ; then
@@ -1899,45 +1930,6 @@ AC_SUBST(GS_HAVE_OBJC_ROOT_CLASS_ATTR)
 AC_DEFINE_UNQUOTED(HAVE_OBJC_ROOT_CLASS_ATTRIBUTE,$gs_objc_root_class_attr,
   [Says whether the objc_root_class attribute works])
 CFLAGS=$saved_CFLAGS
-
-
-#--------------------------------------------------------------------
-# Check if we can name pthreads
-#--------------------------------------------------------------------
-
-AC_CACHE_CHECK([for pthread_setname_np()], gs_cv_pthread_setname_np,
-[AC_LINK_IFELSE(
-  [AC_LANG_PROGRAM([#include <pthread.h>],
-    [pthread_setname_np("name");])],
-  [gs_cv_pthread_setname_np=darwin],
-  [AC_LINK_IFELSE(
-    [AC_LANG_PROGRAM([#include <pthread.h>],
-      [pthread_setname_np(pthread_self(), "name");])],
-    [gs_cv_pthread_setname_np=glibc],
-    [AC_LINK_IFELSE(
-      [AC_LANG_PROGRAM([#include <pthread.h>],
-        [pthread_setname_np(pthread_self(), "%s", "name");])],
-      [gs_cv_pthread_setname_np=netbsd],
-      [gs_cv_pthread_setname_np=none])])])])
-case $gs_cv_pthread_setname_np in
-  darwin)
-    AC_DEFINE(PTHREAD_SETNAME(a), pthread_setname_np(a),
-      [Description: Define set name function for pthread with one arg])
-    ;;
-  glibc)
-    AC_DEFINE(PTHREAD_SETNAME(a), pthread_setname_np(pthread_self(),a),
-      [Description: Define setname function for pthread with two args])
-    ;;
-  netbsd)
-    AC_DEFINE(PTHREAD_SETNAME(a), pthread_setname_np(pthread_self(),"%s",a),
-      [Description: Define setname function for pthread with three args])
-    ;;
-esac
-
-#--------------------------------------------------------------------
-# Check if we have spinlock support
-#--------------------------------------------------------------------
-AC_CHECK_FUNCS(pthread_spin_lock)
 
 #--------------------------------------------------------------------
 # Check whether we can get the system thread ID
@@ -2448,12 +2440,15 @@ if test $bfd_section_vma = 1; then
 fi
 
 
-if test $ismingw = yes ; then
-  AC_CHECK_HEADERS(dbghelp.h)
-else
-  AC_CHECK_HEADERS(execinfo.h)
-  AC_CHECK_FUNCS(backtrace)
-fi
+case "$target_os" in
+  mingw*)
+    AC_CHECK_HEADERS(dbghelp.h)
+    ;;
+  *)
+    AC_CHECK_HEADERS(execinfo.h)
+    AC_CHECK_FUNCS(backtrace)
+    ;;
+esac
 
 AC_CHECK_FUNCS(__builtin_extract_return_address)
 

@@ -180,9 +180,6 @@
 /* Built in default value for GNUstep user_dir web apps */
 #undef GNUSTEP_TARGET_USER_DIR_WEB_APPS
 
-/* Define to 1 if you have the `AcquireSRWLockExclusive' function. */
-#undef HAVE_ACQUIRESRWLOCKEXCLUSIVE
-
 /* Define to 1 if you have the <alloca.h> header file. */
 #undef HAVE_ALLOCA_H
 
@@ -265,9 +262,6 @@
 
 /* Define to 1 if you have the <float.h> header file. */
 #undef HAVE_FLOAT_H
-
-/* Define to 1 if you have the `FlsAlloc' function. */
-#undef HAVE_FLSALLOC
 
 /* Define if libobjc has the __objc_msg_forward2 function */
 #undef HAVE_FORWARD2

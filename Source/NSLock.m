@@ -178,7 +178,7 @@ static BOOL     traceLocks = NO;
 #define MFINALIZE \
 - (void) finalize\
 {\
-  GS_MUTEX_DESTROY(&_mutex);\
+  GS_MUTEX_DESTROY(_mutex);\
 }
 
 #define	MLOCK \

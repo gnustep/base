@@ -44,7 +44,7 @@ typedef struct {
 typedef SRWLOCK gs_cond_mutex_t;
 typedef CONDITION_VARIABLE gs_cond_t;
 
-#define GS_MUTEX_INIT_STATIC {SRWLOCK_INIT, 0, 0, gs_mutex_attr_normal}
+#define GS_MUTEX_INIT_STATIC {.lock = SRWLOCK_INIT, .attr = gs_mutex_attr_normal}
 #define GS_MUTEX_INIT(x) gs_mutex_init(&(x), gs_mutex_attr_normal)
 #define GS_MUTEX_INIT_RECURSIVE(x) gs_mutex_init(&(x), gs_mutex_attr_recursive)
 

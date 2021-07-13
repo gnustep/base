@@ -915,6 +915,7 @@ int
 gs_mutex_lock(gs_mutex_t *mutex)
 {
   DWORD thisThread = GetCurrentThreadId();
+  DWORD ownerThread;
   
   // fast path if lock is not taken
   if (TryAcquireSRWLockExclusive(&mutex->lock))
@@ -926,7 +927,7 @@ gs_mutex_lock(gs_mutex_t *mutex)
   }
   
   // Needs to be atomic because another thread can concurrently set it.
-  DWORD ownerThread = atomic_load(&mutex->owner);
+  ownerThread = atomic_load(&mutex->owner);
   if (ownerThread == thisThread)
   {
     // this thread already owns this lock
@@ -964,6 +965,7 @@ int
 gs_mutex_trylock(gs_mutex_t *mutex)
 {
   DWORD thisThread = GetCurrentThreadId();
+  DWORD ownerThread;
   
   if (TryAcquireSRWLockExclusive(&mutex->lock))
   {
@@ -974,7 +976,7 @@ gs_mutex_trylock(gs_mutex_t *mutex)
   }
   
   // Needs to be atomic because another thread can concurrently set it.
-  DWORD ownerThread = atomic_load(&mutex->owner);
+  ownerThread = atomic_load(&mutex->owner);
   if (ownerThread == thisThread && mutex->attr == gs_mutex_attr_recursive)
   {
     // this thread already owns this lock and it's recursive
@@ -1050,7 +1052,7 @@ gs_cond_timedwait(gs_cond_t *cond, gs_mutex_t *mutex, DWORD millisecs)
   return retVal;
 }
 
-int
+inline int
 gs_cond_wait(gs_cond_t *cond, gs_mutex_t *mutex)
 {
   return gs_cond_timedwait(cond, mutex, INFINITE);

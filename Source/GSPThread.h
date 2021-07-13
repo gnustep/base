@@ -114,7 +114,38 @@ static inline void GSPThreadInitRecursiveMutex(pthread_mutex_t *x)
 
 #endif /* GS_USE_WIN32_LOCKS */
 
-#ifdef __OBJC__
+
+/*
+ * Threading primitives.
+ */
+#if GS_USE_WIN32_THREADS
+
+#include <process.h>
+
+typedef DWORD         gs_thread_key_t;
+typedef DWORD         gs_thread_id_t;
+
+#define GS_THREAD_KEY_INIT(key, dtor) ((key = FlsAlloc(dtor)) != FLS_OUT_OF_INDEXES)
+#define GS_THREAD_KEY_GET(key)        FlsGetValue(key)
+#define GS_THREAD_KEY_SET(key, val)   FlsSetValue(key, val)
+
+#define GS_THREAD_ID_SELF()           GetCurrentThreadId()
+
+#else /* GS_USE_WIN32_THREADS */
+
+typedef pthread_key_t gs_thread_key_t;
+typedef pthread_t     gs_thread_id_t;
+
+#define GS_THREAD_KEY_INIT(key, dtor) (pthread_key_create(&(key), dtor) == 0)
+#define GS_THREAD_KEY_GET(key)        pthread_getspecific(key)
+#define GS_THREAD_KEY_SET(key, val)   pthread_setspecific(key, val)
+
+#define GS_THREAD_ID_SELF()           pthread_self()
+
+#endif /* GS_USE_WIN32_THREADS */
+
+
+#ifdef __OBJC__ /* Enables including file in autoconf check */
 
 #import "Foundation/NSLock.h"
 

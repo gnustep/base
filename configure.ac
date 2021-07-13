@@ -1702,9 +1702,6 @@ fi
 
 AC_CHECK_FUNCS(getaddrinfo)
 
-#--------------------------------------------------------------------
-# Check for pthread.h
-#--------------------------------------------------------------------
 ismingw=no
 ismsvc=no
 checkinlibc=no
@@ -1716,102 +1713,118 @@ case "$target_os" in
   *android*)   checkinlibc=yes;;
 esac
 
-AC_CHECK_HEADERS([pthread.h])
-AC_CHECK_HEADERS([pthread_np.h],[],[],[AC_INCLUDES_DEFAULT
-		  #ifdef HAVE_PTHREAD_H
-		  #include <pthread.h>
-		  #endif
-		  ])
-if test $ac_cv_header_pthread_h = yes ; then
-  AC_CHECK_SIZEOF(pthread_mutex_t,,[AC_INCLUDES_DEFAULT
-#include <pthread.h>])
-  GS_SIZEOF_MUTEX_T=$ac_cv_sizeof_pthread_mutex_t
-  if test $ac_cv_sizeof_pthread_mutex_t = 0 ; then
-    AC_MSG_ERROR([Unable to find size of pthread_mutex_t (required).])
-  fi
-  AC_SUBST(GS_SIZEOF_MUTEX_T)
-  GS_SIZEOF_COND_MUTEX_T=$ac_cv_sizeof_pthread_mutex_t
-  AC_SUBST(GS_SIZEOF_COND_MUTEX_T)
-# pthread_mutex_t.__data.__owner is non-standard since pthread_mutex_t is
-# nominally an opaque type.  We must not rely on this for anything other
-# than debug output!
-  AC_CHECK_MEMBER([pthread_mutex_t.__data.__owner],,,[AC_INCLUDES_DEFAULT
-#include <pthread.h>])
-  if test $ac_cv_member_pthread_mutex_t___data___owner = yes ; then
-    AC_DEFINE(HAVE_PTHREAD_MUTEX_OWNER, 1,
-      [Define if you have pthread_mutex_t.__data.__owner])
-  fi
-  AC_CHECK_SIZEOF(pthread_cond_t,,[AC_INCLUDES_DEFAULT
-#include <pthread.h>])
-  if test $ac_cv_sizeof_pthread_cond_t = 0 ; then
-    AC_MSG_ERROR([Unable to find size of pthread_cond_t (required).])
-  fi
-  GS_SIZEOF_COND_T=$ac_cv_sizeof_pthread_cond_t
-  AC_SUBST(GS_SIZEOF_COND_T)
-  AC_CHECK_ALIGNOF(pthread_mutex_t,[AC_INCLUDES_DEFAULT
-#include <pthread.h>])
-  GS_ALIGNOF_MUTEX_T=$ac_cv_alignof_pthread_mutex_t
-  if test $ac_cv_alignof_pthread_mutex_t = 0 ; then
-    AC_MSG_ERROR([Unable to find align of pthread_mutex_t (required).])
-  fi
-  AC_SUBST(GS_ALIGNOF_MUTEX_T)
-  GS_ALIGNOF_COND_MUTEX_T=$ac_cv_alignof_pthread_mutex_t
-  AC_SUBST(GS_ALIGNOF_COND_MUTEX_T)
-  AC_CHECK_ALIGNOF(pthread_cond_t,[AC_INCLUDES_DEFAULT
-#include <pthread.h>])
-  if test $ac_cv_alignof_pthread_cond_t = 0 ; then
-    AC_MSG_ERROR([Unable to find align of pthread_cond_t (required).])
-  fi
-  GS_ALIGNOF_COND_T=$ac_cv_alignof_pthread_cond_t
-  AC_SUBST(GS_ALIGNOF_COND_T)
-else
-  AC_MSG_ERROR([Unable to find pthread.h (needed for thread support).])
-fi
-AC_CHECK_LIB(pthread, pthread_join, pthread_ok=yes, pthread_ok=no)
-
-if test $pthread_ok = yes ; then
-  LIBS="$LIBS -lpthread"
-else
-  if test $ismingw = yes ; then
-    AC_CHECK_LIB(pthreadGC2, pthread_join, pthread_ok=yes, pthread_ok=no)
-    if test $pthread_ok = yes ; then
-      LIBS="$LIBS -lpthreadGC2"
-    fi
-  fi
-  if test $ismsvc = yes ; then
-    AC_CHECK_LIB(pthreadVC2, pthread_join, pthread_ok=yes, pthread_ok=no)
-    if test $pthread_ok = yes ; then
-      LIBS="$LIBS -lpthreadVC2"
-    fi
-  fi
-  # Android and QNX have pthread in libc instead of libpthread
-  if test $checkinlibc = yes ; then
-    AC_CHECK_LIB(c, pthread_join, pthread_ok=yes, pthread_ok=no)
-    if test $pthread_ok = yes ; then
-       LIBS="$LIBS -lc"
-    fi
-  fi
-fi
-if test $pthread_ok = no ; then
-  AC_MSG_ERROR([Unable to find pthread library (needed for thread support).])
-fi
-
-# Check threading extensions
-AC_CHECK_FUNCS(pthread_getthreadid_np pthread_main_np)
-
-# Typically need librt on Solaris for sched_yield
-AC_CHECK_LIB(rt, sched_yield)
-
-# Windows: check if we have SRW locks
+# Windows: check if we have SRW locks and threading APIs
 GS_USE_WIN32_LOCKS=0
+GS_USE_WIN32_THREADS=0
 if test $ismingw = yes -o $ismsvc = yes; then
   AC_CHECK_FUNCS(AcquireSRWLockExclusive, GS_USE_WIN32_LOCKS=1)
+  AC_CHECK_FUNCS(FlsAlloc, GS_USE_WIN32_THREADS=1)
 fi
 AC_SUBST(GS_USE_WIN32_LOCKS)
+AC_SUBST(GS_USE_WIN32_THREADS)
 
+#--------------------------------------------------------------------
+# Check for pthread.h
+#--------------------------------------------------------------------
+if test $GS_USE_WIN32_LOCKS = 0 -o $GS_USE_WIN32_THREADS = 0; then
+  AC_CHECK_HEADERS([pthread.h])
+  AC_CHECK_HEADERS([pthread_np.h],[],[],[AC_INCLUDES_DEFAULT
+    #ifdef HAVE_PTHREAD_H
+    #include <pthread.h>
+    #endif
+  ])
+  if test $ac_cv_header_pthread_h = yes ; then
+    AC_CHECK_SIZEOF(pthread_mutex_t,,[AC_INCLUDES_DEFAULT
+      #include <pthread.h>])
+    GS_SIZEOF_MUTEX_T=$ac_cv_sizeof_pthread_mutex_t
+    if test $ac_cv_sizeof_pthread_mutex_t = 0 ; then
+      AC_MSG_ERROR([Unable to find size of pthread_mutex_t (required).])
+    fi
+    AC_SUBST(GS_SIZEOF_MUTEX_T)
+    GS_SIZEOF_COND_MUTEX_T=$ac_cv_sizeof_pthread_mutex_t
+    AC_SUBST(GS_SIZEOF_COND_MUTEX_T)
+
+    # pthread_mutex_t.__data.__owner is non-standard since pthread_mutex_t is
+    # nominally an opaque type.  We must not rely on this for anything other
+    # than debug output!
+    AC_CHECK_MEMBER([pthread_mutex_t.__data.__owner],,,[AC_INCLUDES_DEFAULT
+      #include <pthread.h>])
+    if test $ac_cv_member_pthread_mutex_t___data___owner = yes ; then
+      AC_DEFINE(HAVE_PTHREAD_MUTEX_OWNER, 1,
+        [Define if you have pthread_mutex_t.__data.__owner])
+    fi
+
+    AC_CHECK_SIZEOF(pthread_cond_t,,[AC_INCLUDES_DEFAULT
+      #include <pthread.h>])
+    if test $ac_cv_sizeof_pthread_cond_t = 0 ; then
+      AC_MSG_ERROR([Unable to find size of pthread_cond_t (required).])
+    fi
+    GS_SIZEOF_COND_T=$ac_cv_sizeof_pthread_cond_t
+    AC_SUBST(GS_SIZEOF_COND_T)
+
+    AC_CHECK_ALIGNOF(pthread_mutex_t,[AC_INCLUDES_DEFAULT
+      #include <pthread.h>])
+    GS_ALIGNOF_MUTEX_T=$ac_cv_alignof_pthread_mutex_t
+    if test $ac_cv_alignof_pthread_mutex_t = 0 ; then
+      AC_MSG_ERROR([Unable to find align of pthread_mutex_t (required).])
+    fi
+    AC_SUBST(GS_ALIGNOF_MUTEX_T)
+    GS_ALIGNOF_COND_MUTEX_T=$ac_cv_alignof_pthread_mutex_t
+    AC_SUBST(GS_ALIGNOF_COND_MUTEX_T)
+
+    AC_CHECK_ALIGNOF(pthread_cond_t,[AC_INCLUDES_DEFAULT
+      #include <pthread.h>])
+    if test $ac_cv_alignof_pthread_cond_t = 0 ; then
+      AC_MSG_ERROR([Unable to find align of pthread_cond_t (required).])
+    fi
+    GS_ALIGNOF_COND_T=$ac_cv_alignof_pthread_cond_t
+    AC_SUBST(GS_ALIGNOF_COND_T)
+  else
+    AC_MSG_ERROR([Unable to find pthread.h (needed for thread support).])
+  fi
+  AC_CHECK_LIB(pthread, pthread_join, pthread_ok=yes, pthread_ok=no)
+
+  if test $pthread_ok = yes ; then
+    LIBS="$LIBS -lpthread"
+  else
+    if test $ismingw = yes ; then
+      AC_CHECK_LIB(pthreadGC2, pthread_join, pthread_ok=yes, pthread_ok=no)
+      if test $pthread_ok = yes ; then
+        LIBS="$LIBS -lpthreadGC2"
+      fi
+    fi
+    if test $ismsvc = yes ; then
+      AC_CHECK_LIB(pthreadVC2, pthread_join, pthread_ok=yes, pthread_ok=no)
+      if test $pthread_ok = yes ; then
+        LIBS="$LIBS -lpthreadVC2"
+      fi
+    fi
+    # Android and QNX have pthread in libc instead of libpthread
+    if test $checkinlibc = yes ; then
+      AC_CHECK_LIB(c, pthread_join, pthread_ok=yes, pthread_ok=no)
+      if test $pthread_ok = yes ; then
+         LIBS="$LIBS -lc"
+      fi
+    fi
+  fi
+  if test $pthread_ok = no ; then
+    AC_MSG_ERROR([Unable to find pthread library (needed for thread support).])
+  fi
+
+  # Check threading extensions
+  AC_CHECK_FUNCS(pthread_getthreadid_np pthread_main_np)
+
+  # Typically need librt on Solaris for sched_yield
+  AC_CHECK_LIB(rt, sched_yield)
+fi
+
+#--------------------------------------------------------------------
+# Check Win32 lock sizes
+#--------------------------------------------------------------------
 if test $GS_USE_WIN32_LOCKS = 1; then
   AC_CHECK_SIZEOF(gs_mutex_t,,[AC_INCLUDES_DEFAULT
     #define GS_USE_WIN32_LOCKS 1
+    #define GS_USE_WIN32_THREADS 1
     #include "Source/GSPThread.h"])
   GS_SIZEOF_MUTEX_T=$ac_cv_sizeof_gs_mutex_t
   if test $ac_cv_sizeof_gs_mutex_t = 0 ; then
@@ -1821,6 +1834,7 @@ if test $GS_USE_WIN32_LOCKS = 1; then
   
   AC_CHECK_ALIGNOF(gs_mutex_t,[AC_INCLUDES_DEFAULT
     #define GS_USE_WIN32_LOCKS 1
+    #define GS_USE_WIN32_THREADS 1
     #include "Source/GSPThread.h"])
   GS_ALIGNOF_MUTEX_T=$ac_cv_alignof_gs_mutex_t
   if test $ac_cv_alignof_gs_mutex_t = 0 ; then

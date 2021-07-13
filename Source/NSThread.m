@@ -34,7 +34,6 @@
 #import "common.h"
 
 #import "GSPThread.h"
-#include <pthread.h>
 
 // Dummy implementatation
 // cleaner than IFDEF'ing the code everywhere
@@ -95,7 +94,7 @@ typedef struct {
 
 #define	EXPOSE_NSThread_IVARS	1
 #define	GS_NSThread_IVARS \
-  pthread_t             _pthreadID; \
+  gs_thread_id_t        _pthreadID; \
   NSUInteger            _threadID; \
   GSLockInfo            _lockInfo
 
@@ -331,7 +330,7 @@ GSSleepUntilIntervalSinceReferenceDate(NSTimeInterval when)
       /* We don't need to wait, but since we are willing to wait at this
        * point, we should let other threads have preference over this one.
        */
-      sched_yield();
+      GS_YIELD();
       return;
     }
 
@@ -463,7 +462,7 @@ static BOOL	entered_multi_threaded_state = NO;
 static NSThread *defaultThread;
 
 static BOOL             keyInitialized = NO;
-static pthread_key_t    thread_object_key;
+static gs_thread_key_t  thread_object_key;
 
 
 static NSHashTable *_activeBlocked = nil;
@@ -478,10 +477,10 @@ static gs_mutex_t _activeLock = GS_MUTEX_INIT_STATIC;
  * This follows the CoreFoundation 'create rule' and returns an object with
  * a reference count of 1.
  */
-static inline NSValue* NSValueCreateFromPthread(pthread_t thread)
+static inline NSValue* NSValueCreateFromPthread(gs_thread_id_t thread)
 {
   return [[NSValue alloc] initWithBytes: &thread
-                               objCType: @encode(pthread_t)];
+                               objCType: @encode(gs_thread_id_t)];
 }
 
 /**
@@ -489,14 +488,14 @@ static inline NSValue* NSValueCreateFromPthread(pthread_t thread)
  * from an NSValue.
  */
 static inline void
-_getPthreadFromNSValue(const void *value, pthread_t *thread_ptr)
+_getPthreadFromNSValue(const void *value, gs_thread_id_t *thread_ptr)
 {
   const char    *enc;
 
   NSCAssert(thread_ptr, @"No storage for thread reference");
 # ifndef NS_BLOCK_ASSERTIONS
   enc = [(NSValue*)value objCType];
-  NSCAssert(enc != NULL && (0 == strcmp(@encode(pthread_t),enc)),
+  NSCAssert(enc != NULL && (0 == strcmp(@encode(gs_thread_id_t),enc)),
     @"Invalid NSValue container for thread reference");
 # endif
   [(NSValue*)value getValue: (void*)thread_ptr];
@@ -511,12 +510,17 @@ _boxedPthreadIsEqual(NSMapTable *t,
   const void *boxed,
   const void *boxedOther)
 {
-  pthread_t thread;
-  pthread_t otherThread;
+  gs_thread_id_t thread;
+  gs_thread_id_t otherThread;
 
   _getPthreadFromNSValue(boxed, &thread);
   _getPthreadFromNSValue(boxedOther, &otherThread);
+
+#if GS_USE_WIN32_THREADS
+  return thread == otherThread;
+#else
   return pthread_equal(thread, otherThread);
+#endif
 }
 
 /**
@@ -659,14 +663,14 @@ static void exitedThread(void *thread)
 	  /* On some systems this is called with a null thread pointer,
 	   * so try to get the NSThread object for the current thread.
 	   */
-	  thread = pthread_getspecific(thread_object_key);
+	  thread = GS_THREAD_KEY_GET(thread_object_key);
 	  if (0 == thread)
 	    {
 	      return;	// no thread info
 	    }
 	}
       RETAIN((NSThread*)thread);
-      ref = NSValueCreateFromPthread(pthread_self());
+      ref = NSValueCreateFromPthread(GS_THREAD_ID_SELF());
       _willLateUnregisterThread(ref, (NSThread*)thread);
 
       {
@@ -706,17 +710,17 @@ GSCurrentThread(void)
 
   if (NO == keyInitialized)
     {
-      if (pthread_key_create(&thread_object_key, exitedThread))
+      if (!GS_THREAD_KEY_INIT(thread_object_key, exitedThread))
         {
           [NSException raise: NSInternalInconsistencyException
                       format: @"Unable to create thread key!"];
         }
       keyInitialized = YES;
     }
-  thr = pthread_getspecific(thread_object_key);
+  thr = GS_THREAD_KEY_GET(thread_object_key);
   if (nil == thr)
     {
-      NSValue *selfThread = NSValueCreateFromPthread(pthread_self());
+      NSValue *selfThread = NSValueCreateFromPthread(GS_THREAD_ID_SELF());
 
       /* NB this locked section cannot be protected by an exception handler
        * because the exception handler stores information in the current
@@ -732,7 +736,7 @@ GSCurrentThread(void)
       if (nil == thr)
         {
           GSRegisterCurrentThread();
-          thr = pthread_getspecific(thread_object_key);
+          thr = GS_THREAD_KEY_GET(thread_object_key);
           if ((nil == defaultThread) && IS_MAIN_PTHREAD)
             {
               defaultThread = RETAIN(thr);
@@ -839,7 +843,7 @@ gnustep_base_thread_callback(void)
    * pthread specific memory before we do anything which might need to
    * check what the current thread is (like getting the ID)!
    */
-  pthread_setspecific(thread_object_key, self);
+  GS_THREAD_KEY_SET(thread_object_key, self);
   threadID = GSPrivateThreadID();
   GS_MUTEX_LOCK(_activeLock);
   /* The hash table is created lazily/late so that the NSThread
@@ -893,7 +897,7 @@ unregisterActiveThread(NSThread *thread)
       [(GSRunLoopThreadInfo*)thread->_runLoopInfo invalidate];
       LEAVE_POOL
       RELEASE(thread);
-      pthread_setspecific(thread_object_key, nil);
+      GS_THREAD_KEY_SET(thread_object_key, nil);
     }
 }
 
@@ -911,7 +915,7 @@ unregisterActiveThread(NSThread *thread)
 
 + (BOOL) _createThreadForCurrentPthread
 {
-  NSThread	*t = pthread_getspecific(thread_object_key);
+  NSThread	*t = GS_THREAD_KEY_GET(thread_object_key);
 
   if (t == nil)
     {
@@ -967,7 +971,11 @@ unregisterActiveThread(NSThread *thread)
 	}
       else
 	{
+#if GS_USE_WIN32_THREADS
+          ExitThread(0);
+#else
           pthread_exit(NULL);
+#endif
 	}
     }
 }
@@ -981,7 +989,7 @@ unregisterActiveThread(NSThread *thread)
     {
       if (NO == keyInitialized)
         {
-          if (pthread_key_create(&thread_object_key, exitedThread))
+          if (!GS_THREAD_KEY_INIT(thread_object_key, exitedThread))
             {
               [NSException raise: NSInternalInconsistencyException
                           format: @"Unable to create thread key!"];
@@ -1316,7 +1324,12 @@ unregisterActiveThread(NSThread *thread)
 /**
  * Trampoline function called to launch the thread
  */
-static void *
+static
+#if GS_USE_WIN32_THREADS
+unsigned int
+#else
+void *
+#endif
 nsthreadLauncher(void *thread)
 {
   NSThread *t = (NSThread*)thread;
@@ -1340,12 +1353,18 @@ nsthreadLauncher(void *thread)
 
   [NSThread exit];
   // Not reached
+#if GS_USE_WIN32_THREADS
+  return 0;
+#else
   return NULL;
+#endif
 }
 
 - (void) start
 {
+#if !GS_USE_WIN32_THREADS
   pthread_attr_t	attr;
+#endif
 
   if (_active == YES)
     {
@@ -1382,6 +1401,16 @@ nsthreadLauncher(void *thread)
   _active = YES;
 
   errno = 0;
+
+#if GS_USE_WIN32_THREADS
+  if (_beginthreadex(NULL, _stackSize, nsthreadLauncher, self, 0, NULL) == 0)
+    {
+      DESTROY(self);
+      [NSException raise: NSInternalInconsistencyException
+                  format: @"Unable to detach thread (last error %lu)",
+                  _doserrno];
+    }
+#else
   pthread_attr_init(&attr);
   /* Create this thread detached, because we never use the return state from
    * threads.
@@ -1401,6 +1430,7 @@ nsthreadLauncher(void *thread)
                   format: @"Unable to detach thread (last error %@)",
                   [NSError _last]];
     }
+#endif
 }
 
 /**

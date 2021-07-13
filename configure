@@ -679,13 +679,14 @@ OBJCSYNC
 NX_CONST_STRING_CLASS
 NX_CONST_STRING_OBJCFLAGS
 GS_HAVE_OBJC_ROOT_CLASS_ATTR
-GS_USE_WIN32_LOCKS
 GS_ALIGNOF_COND_T
 GS_ALIGNOF_COND_MUTEX_T
 GS_ALIGNOF_MUTEX_T
 GS_SIZEOF_COND_T
 GS_SIZEOF_COND_MUTEX_T
 GS_SIZEOF_MUTEX_T
+GS_USE_WIN32_THREADS
+GS_USE_WIN32_LOCKS
 DYNAMIC_LINKER
 BUGGY_PTR_LIMITS
 GS_UINTPTR_MAX
@@ -7254,9 +7255,6 @@ fi
 done
 
 
-#--------------------------------------------------------------------
-# Check for pthread.h
-#--------------------------------------------------------------------
 ismingw=no
 ismsvc=no
 checkinlibc=no
@@ -7268,7 +7266,41 @@ case "$target_os" in
   *android*)   checkinlibc=yes;;
 esac
 
-for ac_header in pthread.h
+# Windows: check if we have SRW locks and threading APIs
+GS_USE_WIN32_LOCKS=0
+GS_USE_WIN32_THREADS=0
+if test $ismingw = yes -o $ismsvc = yes; then
+  for ac_func in AcquireSRWLockExclusive
+do :
+  ac_fn_c_check_func "$LINENO" "AcquireSRWLockExclusive" "ac_cv_func_AcquireSRWLockExclusive"
+if test "x$ac_cv_func_AcquireSRWLockExclusive" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_ACQUIRESRWLOCKEXCLUSIVE 1
+_ACEOF
+ GS_USE_WIN32_LOCKS=1
+fi
+done
+
+  for ac_func in FlsAlloc
+do :
+  ac_fn_c_check_func "$LINENO" "FlsAlloc" "ac_cv_func_FlsAlloc"
+if test "x$ac_cv_func_FlsAlloc" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_FLSALLOC 1
+_ACEOF
+ GS_USE_WIN32_THREADS=1
+fi
+done
+
+fi
+
+
+
+#--------------------------------------------------------------------
+# Check for pthread.h
+#--------------------------------------------------------------------
+if test $GS_USE_WIN32_LOCKS = 0 -o $GS_USE_WIN32_THREADS = 0; then
+  for ac_header in pthread.h
 do :
   ac_fn_c_check_header_mongrel "$LINENO" "pthread.h" "ac_cv_header_pthread_h" "$ac_includes_default"
 if test "x$ac_cv_header_pthread_h" = xyes; then :
@@ -7280,12 +7312,12 @@ fi
 
 done
 
-for ac_header in pthread_np.h
+  for ac_header in pthread_np.h
 do :
   ac_fn_c_check_header_compile "$LINENO" "pthread_np.h" "ac_cv_header_pthread_np_h" "$ac_includes_default
-		  #ifdef HAVE_PTHREAD_H
-		  #include <pthread.h>
-		  #endif
+    #ifdef HAVE_PTHREAD_H
+    #include <pthread.h>
+    #endif
 
 "
 if test "x$ac_cv_header_pthread_np_h" = xyes; then :
@@ -7297,8 +7329,8 @@ fi
 
 done
 
-if test $ac_cv_header_pthread_h = yes ; then
-  # The cast to long int works around a bug in the HP C Compiler
+  if test $ac_cv_header_pthread_h = yes ; then
+    # The cast to long int works around a bug in the HP C Compiler
 # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
 # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
 # This bug is HP SR number 8606223364.
@@ -7308,7 +7340,7 @@ if ${ac_cv_sizeof_pthread_mutex_t+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   if ac_fn_c_compute_int "$LINENO" "(long int) (sizeof (pthread_mutex_t))" "ac_cv_sizeof_pthread_mutex_t"        "$ac_includes_default
-#include <pthread.h>
+      #include <pthread.h>
 "; then :
 
 else
@@ -7333,29 +7365,31 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-  GS_SIZEOF_MUTEX_T=$ac_cv_sizeof_pthread_mutex_t
-  if test $ac_cv_sizeof_pthread_mutex_t = 0 ; then
-    as_fn_error $? "Unable to find size of pthread_mutex_t (required)." "$LINENO" 5
-  fi
+    GS_SIZEOF_MUTEX_T=$ac_cv_sizeof_pthread_mutex_t
+    if test $ac_cv_sizeof_pthread_mutex_t = 0 ; then
+      as_fn_error $? "Unable to find size of pthread_mutex_t (required)." "$LINENO" 5
+    fi
 
-  GS_SIZEOF_COND_MUTEX_T=$ac_cv_sizeof_pthread_mutex_t
+    GS_SIZEOF_COND_MUTEX_T=$ac_cv_sizeof_pthread_mutex_t
 
-# pthread_mutex_t.__data.__owner is non-standard since pthread_mutex_t is
-# nominally an opaque type.  We must not rely on this for anything other
-# than debug output!
-  ac_fn_c_check_member "$LINENO" "pthread_mutex_t" "__data.__owner" "ac_cv_member_pthread_mutex_t___data___owner" "$ac_includes_default
-#include <pthread.h>
+
+    # pthread_mutex_t.__data.__owner is non-standard since pthread_mutex_t is
+    # nominally an opaque type.  We must not rely on this for anything other
+    # than debug output!
+    ac_fn_c_check_member "$LINENO" "pthread_mutex_t" "__data.__owner" "ac_cv_member_pthread_mutex_t___data___owner" "$ac_includes_default
+      #include <pthread.h>
 "
 if test "x$ac_cv_member_pthread_mutex_t___data___owner" = xyes; then :
 
 fi
 
-  if test $ac_cv_member_pthread_mutex_t___data___owner = yes ; then
+    if test $ac_cv_member_pthread_mutex_t___data___owner = yes ; then
 
 $as_echo "#define HAVE_PTHREAD_MUTEX_OWNER 1" >>confdefs.h
 
-  fi
-  # The cast to long int works around a bug in the HP C Compiler
+    fi
+
+    # The cast to long int works around a bug in the HP C Compiler
 # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
 # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
 # This bug is HP SR number 8606223364.
@@ -7365,7 +7399,7 @@ if ${ac_cv_sizeof_pthread_cond_t+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   if ac_fn_c_compute_int "$LINENO" "(long int) (sizeof (pthread_cond_t))" "ac_cv_sizeof_pthread_cond_t"        "$ac_includes_default
-#include <pthread.h>
+      #include <pthread.h>
 "; then :
 
 else
@@ -7390,12 +7424,13 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-  if test $ac_cv_sizeof_pthread_cond_t = 0 ; then
-    as_fn_error $? "Unable to find size of pthread_cond_t (required)." "$LINENO" 5
-  fi
-  GS_SIZEOF_COND_T=$ac_cv_sizeof_pthread_cond_t
+    if test $ac_cv_sizeof_pthread_cond_t = 0 ; then
+      as_fn_error $? "Unable to find size of pthread_cond_t (required)." "$LINENO" 5
+    fi
+    GS_SIZEOF_COND_T=$ac_cv_sizeof_pthread_cond_t
 
-  # The cast to long int works around a bug in the HP C Compiler,
+
+    # The cast to long int works around a bug in the HP C Compiler,
 # see AC_CHECK_SIZEOF for more information.
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking alignment of pthread_mutex_t" >&5
 $as_echo_n "checking alignment of pthread_mutex_t... " >&6; }
@@ -7403,7 +7438,7 @@ if ${ac_cv_alignof_pthread_mutex_t+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   if ac_fn_c_compute_int "$LINENO" "(long int) offsetof (ac__type_alignof_, y)" "ac_cv_alignof_pthread_mutex_t"        "$ac_includes_default
-#include <pthread.h>
+      #include <pthread.h>
 
 #ifndef offsetof
 # define offsetof(type, member) ((char *) &((type *) 0)->member - (char *) 0)
@@ -7432,14 +7467,15 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-  GS_ALIGNOF_MUTEX_T=$ac_cv_alignof_pthread_mutex_t
-  if test $ac_cv_alignof_pthread_mutex_t = 0 ; then
-    as_fn_error $? "Unable to find align of pthread_mutex_t (required)." "$LINENO" 5
-  fi
+    GS_ALIGNOF_MUTEX_T=$ac_cv_alignof_pthread_mutex_t
+    if test $ac_cv_alignof_pthread_mutex_t = 0 ; then
+      as_fn_error $? "Unable to find align of pthread_mutex_t (required)." "$LINENO" 5
+    fi
 
-  GS_ALIGNOF_COND_MUTEX_T=$ac_cv_alignof_pthread_mutex_t
+    GS_ALIGNOF_COND_MUTEX_T=$ac_cv_alignof_pthread_mutex_t
 
-  # The cast to long int works around a bug in the HP C Compiler,
+
+    # The cast to long int works around a bug in the HP C Compiler,
 # see AC_CHECK_SIZEOF for more information.
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking alignment of pthread_cond_t" >&5
 $as_echo_n "checking alignment of pthread_cond_t... " >&6; }
@@ -7447,7 +7483,7 @@ if ${ac_cv_alignof_pthread_cond_t+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   if ac_fn_c_compute_int "$LINENO" "(long int) offsetof (ac__type_alignof_, y)" "ac_cv_alignof_pthread_cond_t"        "$ac_includes_default
-#include <pthread.h>
+      #include <pthread.h>
 
 #ifndef offsetof
 # define offsetof(type, member) ((char *) &((type *) 0)->member - (char *) 0)
@@ -7476,15 +7512,15 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-  if test $ac_cv_alignof_pthread_cond_t = 0 ; then
-    as_fn_error $? "Unable to find align of pthread_cond_t (required)." "$LINENO" 5
-  fi
-  GS_ALIGNOF_COND_T=$ac_cv_alignof_pthread_cond_t
+    if test $ac_cv_alignof_pthread_cond_t = 0 ; then
+      as_fn_error $? "Unable to find align of pthread_cond_t (required)." "$LINENO" 5
+    fi
+    GS_ALIGNOF_COND_T=$ac_cv_alignof_pthread_cond_t
 
-else
-  as_fn_error $? "Unable to find pthread.h (needed for thread support)." "$LINENO" 5
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lpthread" >&5
+  else
+    as_fn_error $? "Unable to find pthread.h (needed for thread support)." "$LINENO" 5
+  fi
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lpthread" >&5
 $as_echo_n "checking for pthread_join in -lpthread... " >&6; }
 if ${ac_cv_lib_pthread_pthread_join+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -7527,11 +7563,11 @@ else
 fi
 
 
-if test $pthread_ok = yes ; then
-  LIBS="$LIBS -lpthread"
-else
-  if test $ismingw = yes ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lpthreadGC2" >&5
+  if test $pthread_ok = yes ; then
+    LIBS="$LIBS -lpthread"
+  else
+    if test $ismingw = yes ; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lpthreadGC2" >&5
 $as_echo_n "checking for pthread_join in -lpthreadGC2... " >&6; }
 if ${ac_cv_lib_pthreadGC2_pthread_join+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -7573,12 +7609,12 @@ else
   pthread_ok=no
 fi
 
-    if test $pthread_ok = yes ; then
-      LIBS="$LIBS -lpthreadGC2"
+      if test $pthread_ok = yes ; then
+        LIBS="$LIBS -lpthreadGC2"
+      fi
     fi
-  fi
-  if test $ismsvc = yes ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lpthreadVC2" >&5
+    if test $ismsvc = yes ; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lpthreadVC2" >&5
 $as_echo_n "checking for pthread_join in -lpthreadVC2... " >&6; }
 if ${ac_cv_lib_pthreadVC2_pthread_join+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -7620,13 +7656,13 @@ else
   pthread_ok=no
 fi
 
-    if test $pthread_ok = yes ; then
-      LIBS="$LIBS -lpthreadVC2"
+      if test $pthread_ok = yes ; then
+        LIBS="$LIBS -lpthreadVC2"
+      fi
     fi
-  fi
-  # Android and QNX have pthread in libc instead of libpthread
-  if test $checkinlibc = yes ; then
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lc" >&5
+    # Android and QNX have pthread in libc instead of libpthread
+    if test $checkinlibc = yes ; then
+      { $as_echo "$as_me:${as_lineno-$LINENO}: checking for pthread_join in -lc" >&5
 $as_echo_n "checking for pthread_join in -lc... " >&6; }
 if ${ac_cv_lib_c_pthread_join+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -7668,17 +7704,17 @@ else
   pthread_ok=no
 fi
 
-    if test $pthread_ok = yes ; then
-       LIBS="$LIBS -lc"
+      if test $pthread_ok = yes ; then
+         LIBS="$LIBS -lc"
+      fi
     fi
   fi
-fi
-if test $pthread_ok = no ; then
-  as_fn_error $? "Unable to find pthread library (needed for thread support)." "$LINENO" 5
-fi
+  if test $pthread_ok = no ; then
+    as_fn_error $? "Unable to find pthread library (needed for thread support)." "$LINENO" 5
+  fi
 
-# Check threading extensions
-for ac_func in pthread_getthreadid_np pthread_main_np
+  # Check threading extensions
+  for ac_func in pthread_getthreadid_np pthread_main_np
 do :
   as_ac_var=`$as_echo "ac_cv_func_$ac_func" | $as_tr_sh`
 ac_fn_c_check_func "$LINENO" "$ac_func" "$as_ac_var"
@@ -7691,8 +7727,8 @@ fi
 done
 
 
-# Typically need librt on Solaris for sched_yield
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for sched_yield in -lrt" >&5
+  # Typically need librt on Solaris for sched_yield
+  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for sched_yield in -lrt" >&5
 $as_echo_n "checking for sched_yield in -lrt... " >&6; }
 if ${ac_cv_lib_rt_sched_yield+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -7737,24 +7773,11 @@ _ACEOF
 
 fi
 
-
-# Windows: check if we have SRW locks
-GS_USE_WIN32_LOCKS=0
-if test $ismingw = yes -o $ismsvc = yes; then
-  for ac_func in AcquireSRWLockExclusive
-do :
-  ac_fn_c_check_func "$LINENO" "AcquireSRWLockExclusive" "ac_cv_func_AcquireSRWLockExclusive"
-if test "x$ac_cv_func_AcquireSRWLockExclusive" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_ACQUIRESRWLOCKEXCLUSIVE 1
-_ACEOF
- GS_USE_WIN32_LOCKS=1
-fi
-done
-
 fi
 
-
+#--------------------------------------------------------------------
+# Check Win32 lock sizes
+#--------------------------------------------------------------------
 if test $GS_USE_WIN32_LOCKS = 1; then
   # The cast to long int works around a bug in the HP C Compiler
 # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
@@ -7767,6 +7790,7 @@ if ${ac_cv_sizeof_gs_mutex_t+:} false; then :
 else
   if ac_fn_c_compute_int "$LINENO" "(long int) (sizeof (gs_mutex_t))" "ac_cv_sizeof_gs_mutex_t"        "$ac_includes_default
     #define GS_USE_WIN32_LOCKS 1
+    #define GS_USE_WIN32_THREADS 1
     #include \"Source/GSPThread.h\"
 "; then :
 
@@ -7807,6 +7831,7 @@ if ${ac_cv_alignof_gs_mutex_t+:} false; then :
 else
   if ac_fn_c_compute_int "$LINENO" "(long int) offsetof (ac__type_alignof_, y)" "ac_cv_alignof_gs_mutex_t"        "$ac_includes_default
     #define GS_USE_WIN32_LOCKS 1
+    #define GS_USE_WIN32_THREADS 1
     #include \"Source/GSPThread.h\"
 
 #ifndef offsetof

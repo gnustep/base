@@ -266,6 +266,9 @@
 /* Define to 1 if you have the <float.h> header file. */
 #undef HAVE_FLOAT_H
 
+/* Define to 1 if you have the `FlsAlloc' function. */
+#undef HAVE_FLSALLOC
+
 /* Define if libobjc has the __objc_msg_forward2 function */
 #undef HAVE_FORWARD2
 

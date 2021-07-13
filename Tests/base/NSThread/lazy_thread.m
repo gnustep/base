@@ -1,27 +1,45 @@
 #import "ObjectTesting.h"
 #import <Foundation/NSThread.h>
+
+#if defined(_WIN32)
+#include <process.h>
+#else
 #include <pthread.h>
+#endif
+
+static NSThread *threadResult = nil;
 
 void *thread(void *ignored)
 {
-  return [NSThread currentThread];
+  threadResult = [NSThread currentThread];
+  return NULL;
 }
 
 int main(void)
 {
+#if defined(_WIN32)
+  HANDLE thr;
+  thr = _beginthreadex(NULL, 0, thread, NULL, 0, NULL);
+  WaitForSingleObject(thr, INFINITE);
+#else
   pthread_t thr;
-  void *ret;
-
   pthread_create(&thr, NULL, thread, NULL);
-  pthread_join(thr, &ret);
-  PASS(ret != 0, "NSThread lazily created from POSIX thread");
+  pthread_join(thr, NULL);
+#endif
+  PASS(threadResult != 0, "NSThread lazily created from native thread");
   testHopeful = YES;
-  PASS((ret != 0) && (ret != [NSThread mainThread]),
+  PASS((threadResult != 0) && (threadResult != [NSThread mainThread]),
     "Spawned thread is not main thread");
+
+#if defined(_WIN32)
+  thr = _beginthreadex(NULL, 0, thread, NULL, 0, NULL);
+  WaitForSingleObject(thr, INFINITE);
+#else
   pthread_create(&thr, NULL, thread, NULL);
-  pthread_join(thr, &ret);
-  PASS(ret != 0, "NSThread lazily created from POSIX thread");
-  PASS((ret != 0) && (ret != [NSThread mainThread]),
+  pthread_join(thr, NULL);
+#endif
+  PASS(threadResult != 0, "NSThread lazily created from native thread");
+  PASS((threadResult != 0) && (threadResult != [NSThread mainThread]),
     "Spawned thread is not main thread");
 
   NSThread *t = [NSThread currentThread];

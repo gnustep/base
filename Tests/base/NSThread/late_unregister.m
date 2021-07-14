@@ -2,10 +2,12 @@
 #import <Foundation/NSThread.h>
 #import <Foundation/NSLock.h>
 #import <Foundation/NSNotification.h>
+
+#if defined(_WIN32)
+#include <process.h>
+#else
 #include <pthread.h>
-
-
-
+#endif
 
 @interface ThreadExpectation : NSObject <NSLocking>
 {
@@ -116,13 +118,18 @@ void *thread(void *expectation)
  */
 int main(void)
 {
+  NSAutoreleasePool *arp = [NSAutoreleasePool new];
+  ThreadExpectation *expectation = [ThreadExpectation new];
+  
+#if defined(_WIN32)
+  _beginthreadex(NULL, 0, thread, expectation, 0, NULL);
+#else
   pthread_t thr;
   pthread_attr_t attr;
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-  NSAutoreleasePool *arp = [NSAutoreleasePool new];
-  ThreadExpectation *expectation = [ThreadExpectation new];
   pthread_create(&thr, &attr, thread, expectation);
+#endif
 
   NSDate *start = [NSDate date];
   [expectation lock];
